@@ -1,0 +1,72 @@
+name: Extract Arabic Text (AI OCR Stable & Full)
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  extract:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Maximize Disk Space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL || true
+          sudo docker image prune --all --force || true
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Create Folders
+        run: mkdir -p output folder
+
+      - name: Install System Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y poppler-utils libgl1 libglx-mesa0 tesseract-ocr tesseract-ocr-ara
+
+      - name: Cache Pip Packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-v2-${{ hashFiles('**/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-v2-
+
+      - name: Cache EasyOCR Models
+        uses: actions/cache@v4
+        with:
+          path: ~/.EasyOCR
+          key: ${{ runner.os }}-easyocr-models-v2
+
+      - name: Install Python Dependencies
+        run: |
+          pip install --upgrade pip
+          pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+          # تم الإبقاء فقط على المكتبات اللازمة للاستخراج الخام
+          pip install easyocr pdf2image opencv-python-headless numpy
+
+      - name: Run extractor
+        env:
+          MALLOC_TRIM_THRESHOLD_: 100000
+        run: |
+          python extract.py
+
+      - name: Commit and Push
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          # رفع ملفات الـ TXT فقط لضمان نظافة المستودع
+          git add output/*.txt
+          git commit -m "AI OCR: Raw Text Extraction (Stable)" || echo "Nothing to commit"
+          git push
